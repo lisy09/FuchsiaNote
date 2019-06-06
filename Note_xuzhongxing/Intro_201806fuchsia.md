@@ -106,3 +106,97 @@ https://xuzhongxing.github.io/201806fuchsia.pdf
 - Performance overhead
   - Context switching (user space <=> kernel space)
   - Thread scheduling
+```mermaid
+graph TD
+subgraph MonolithicKernal
+  app[application] --> VFS
+  subgraph kernel
+    VFS --> ext2
+    ext2 --> dd[device driver]
+  end
+  dd --> disk
+end
+subgraph MicroKernal
+  _call[IPC call]
+  subgraph app
+    _app[application]
+    _VFS[VFS]
+    _ext2[ext2]
+  end
+  _app --> _call
+  _VFS --> _call
+  _ext2 --> _call
+  _call --> IPC
+  subgraph kernal
+    IPC
+  end
+  IPC --> _VFS
+  IPC --> _ext2
+  IPC --> _dd[device driver]
+  _dd --> _disk[disk]
+end
+```
+### Overhead: single core case
+- Monolithic
+  - CPU0
+    - Context switching: 2
+- Micro
+  - CPU0
+    - Context switching: 8
+    - Thread scheduling: 4
+### Overhead: multicore case
+- Monolithic
+  - CPU0
+    - Context switching: 2
+- Micro
+  - CPU0
+    - Context switching: 2
+  - CPU1
+    - Context switching: 2
+  - CPU2
+    - Context switching: 2
+  - CPU3
+    - Context switching: 2
+## Fuchsia在各个平台上的可能的优势
+- 在服务器平台上，原生的进程沙箱机制将带来新的安全特性和容器机制
+- 在桌面平台上，类似于游戏3D引擎pipeline的图形栈以及毫无遗产负担的实现将使电子娱乐应用变得更为高效；无缝兼容庞大的Android生态
+- 在移动平台上，系统的模块化方便第三方设备厂商的全面
+定制，驱动框架方便硬件厂商编写和维护私有驱动
+
+## Fuchsia分层
+- Fuchsia是一个像Lego玩具一样组装起来的操作系统
+  - 谷歌在设计时已经考虑了其他厂商可能会深度定制适配自己产品的操作系统，所以模块化做得比Android彻底很多
+  - 厂商的深度定制可以从以下任意一层开始
+- Zircon: 微内核，基础服务进程（设备管理器，核心设备驱动，libc, 进程间通信接口库fidl)
+- Garnet: 设备层面的系统服务：软件安装，通信，媒体，图形，包管理，更新系统等
+- Peridot: 用户体验的基础设施层：模块，用户，存储服务，等等
+- Topaz: 系统的基础应用，Web, Dart, Flutter
+- 这些名字来自于Steven Universe
+
+## Fuchsia启动流程
+1. 设置各种控制寄存器，进入EL1
+2. 设置内核页表，打开虚拟内存
+3. 之后进入C的世界
+4. 用psci smc call启动副cpu
+5. 为当前执行轨迹初始化为线程结构
+6. 进行一系列初始化，包括各种设备
+7. 构造第一个用户态线程userboot,内核线程进入idle
+  - 之前的微内核一般需要实现一个基本的文件系统加载功能在内核里，然后加载第一个用户进程文件，之后就不再使用内核里的文件系统功能
+  - Zircon把第一个用户态进程的ELF文件嵌入进内核映像里，这样就不需要从文件系统里加载了。
+8. userboot从bootfs中加载第一个文件进程devmgr
+9. devmgr=>svchost,fshost,devhost,appmgr=>sysmgr
+
+## Fuchsia目前的运行环境
+- Qemu
+  - 最方便的环境，没有GUI
+  - 在Qemu中可以直接运行
+    - booloader加载到0x40080000
+    - 内核加载到0x40090000
+    - ramdisk加载到0x48000000
+    - 0x40000000-0x40080000之间是FDT flattened device tree
+- Intel NUC
+  - 目前最好的测试环境，有GUI
+  - 开发机启动paving服务，会将整个Fuchsia操作系统刷到NUC上。
+  - 启动zircon到zedboot模式，会直接连接开发机
+- Khadas Vim2
+  - Google内部开发用的板子
