@@ -240,3 +240,16 @@
   - smc_call - Make an SMC call from user space
 
 ## Zircon vDSO
+### Using the vDSO
+- `System Call ABI`
+  - Each system call corresponds to an ELF symbol in the vDSO, and has the ABI of a C function
+- `vDSO Unwind Information`
+- `vDSO Build ID`
+- `PA_VMO_VDSO` handle
+  - The kernel exposes vDSO to userspace as a read-only `VMO`.
+### vDSO Implementation Details
+- `abigen` tool
+  - input to abigen: specified by `<zircon/syscalls.abigen>`
+- `Read-Only Dynamic Shared Object Layout`
+- `Boot-time Read-Only Data`
+- `Enforcement`
