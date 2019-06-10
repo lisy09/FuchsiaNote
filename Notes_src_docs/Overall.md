@@ -2,7 +2,8 @@
 ## Zercon Kernal Concepts
 - `Kernal Objects`
   - accessible directly via system calls are C++ classes which implement the Dispatcher interface
-  -  implemented in zircon/kernel/object
+  - implemented in zircon/kernel/object
+
 - `System Calls`
   - almost via `Handles`
   - Handle
@@ -14,4 +15,228 @@
     - Calls which `create new Objects` but do not take a Handle, such as `zx_event_create()` and `zx_channel_create()`. Access to these (and limitations upon them) is controlled by the Job in which the calling Process is contained.
   - provide by `libzircon.so` / virtual Dynamic Shared Object/ vDSO
     - C ELF ABI functions
-    - defined by syscalls.abigen and processed by the abigen tool 
+    - defined by syscalls.abigen and processed by the `abigen` tool
+
+- `Handles` and `Rights`
+  - `Handles` may be `moved` from one Process to another by writing them into a `Channel` (using `zx_channel_write()`), or by using `zx_process_start()` to pass a Handle as the argument of the first thread in `a new Process`.
+  - Rights associated with Handle
+  - obtain additional Handles: `zx_handle_duplicate()` and `zx_handle_replace() `
+  - closes a Handle, releasing the Object it refers to: `zx_handle_close()`, `zx_handle_close_many()`
+
+- `Kernel Object IDs`
+  - 64 bit uint
+  - two special koid value:
+    - `ZX_KOID_INVALID`: value 0, as null
+    - `ZX_KOID_KERNEL`: only 1 kernel
+  - Kernel generated koids only use 63 bits
+
+- Running Code: Jobs, Processes, and Threads.
+  - zx_process_create()
+  - zx_process_start()
+  - zx_thread_create()
+  - zx_thread_start()
+
+- Message Passing: `Sockets` and `Channels`
+  - `Sockets`
+    - `stream-oriented`
+    - data may be written into or read out of them in units of one or more bytes.
+    - Short writes (if the Socket's buffers are full) and short reads (if more data is requested than in the buffers) are possible.
+  - `Channels`
+    - `datagram-oriented`
+    - have a maximum message size given by `ZX_CHANNEL_MAX_MSG_BYTES`
+    - may also have up to `ZX_CHANNEL_MAX_MSG_HANDLES` Handles attached to a message.
+    - They do not support short reads or writes -- either a message fits or it does not.
+    - When Handles are written into a Channel, they are removed from the sending Process.
+    - When a message with Handles is read from a Channel, the Handles are added to the receiving Process
+- related syscalls
+  - zx_channel_create()
+  - zx_channel_read()
+  - zx_channel_write()
+  - zx_channel_call()
+  - zx_socket_create()
+  - zx_socket_read()
+  - zx_socket_write()
+
+- `Objects` and `Signals`
+  - Objects may have up to `32 signals` (represented by the zx_signals_t type and the ZX_SIGNAL defines) which represent a piece of information about their current state
+  - e.g. Channels and Sockets may be READABLE or WRITABLE.
+  - e.g. Processes or Threads may be TERMINATED
+  - `Zircon Signals`
+    - A signal is a` single bit` of information that `waitable zircon kernel objects` expose to `applications`
+    - signals for an object are stored in a `uint32 bitmask`
+    - defined in `zircon/types.h`
+    - To determine if an object is waitable, call zx_object_get_info(). with ZX_INFO_HANDLE_BASIC topic and test for ZX_OBJ_PROP_WAITABLE.
+    - State, State Changes and their Terminology
+      - A signal is said to be Active when its bit is 1 and Inactive when its bit is 0.
+      - A signal is said to be Asserted when it is made Active in response to an event (even if it was already Active), and is said to be Deasserted when it is made Inactive in response to an event (even if it was already Inactive).
+    - Observing Signals
+      -  zx_object_wait_one()
+      - zx_object_wait_many()
+      - and zx_object_wait_async()
+    - Common Signals
+      - `ZX_SIGNAL_HANDLE_CLOSED`
+    - User Signals
+      - There are `8 User Signals` (ZX_USER_SIGNAL_0 through ZX_USER_SIGNAL_7)
+      - zx_object_signal() and zx_object_signal_peer()
+
+- Waiting: Wait One, Wait Many, and Ports
+  - If a Thread is going to wait on a large set of handles, it is more efficient to use a Port, which is an Object that other Objects may be bound to such that when signals are asserted on them, the Port receives a packet containing information about the pending Signals.
+
+- Events, Event Pairs
+- Shared Memory: Virtual Memory Objects (VMOs)
+  - a set of physical pages of memory, or the potential for pages (which will be created/filled lazily, on-demand)
+  -  be read from and written to directly with zx_vmo_read() and zx_vmo_write()
+
+- Address Space Management
+  - zx_vmar_map(), zx_vmar_allocate(), zx_vmar_protect(), zx_vmar_unmap(), and zx_vmar_destroy(),
+
+- `Futexes`
+  - kernel primitives used with userspace atomic operations to implement efficient synchronization primitives -- for example, Mutexes which only need to make a syscall in the contended case. Usually they are only of interest to implementers of standard libraries. Zircon's libc and libc++ provide C11, C++, and pthread APIs for mutexes, condition variables, etc, implemented in terms of Futexes.
+  - zx_futex_wait(), zx_futex_wake(), and zx_futex_requeue().
+
+## zircon System Calls
+- `Handles`
+  - handle_close - close a handle
+  - handle_close_many - close several handles
+  - handle_duplicate - create a duplicate handle (optionally with reduced rights)
+  - handle_replace - create a new handle (optionally with reduced rights) and destroy the old one
+- `Objects`
+  - object_get_child - find the child of an object by its koid
+  - object_get_info - obtain information about an object
+  - object_get_property - read an object property
+  - object_set_property - modify an object property
+  - object_signal - set or clear the user signals on an object
+  - object_signal_peer - set or clear the user signals in the opposite end
+  - object_wait_many - wait for signals on multiple objects
+  - object_wait_one - wait for signals on one object
+  - object_wait_async - asynchronous notifications on signal change
+- `Threads`
+  - thread_create - create a new thread within a process
+  - thread_exit - exit the current thread
+  - thread_read_state - read register state from a thread
+  - thread_start - cause a new thread to start executing
+  - thread_write_state - modify register state of a thread
+- `Processes`
+  - process_create - create a new process within a job
+  - process_read_memory - read from a process's address space
+  - process_start - cause a new process to start executing
+  - process_write_memory - write to a process's address space
+  - process_exit - exit the current process
+- `Jobs`
+  - job_create - create a new job within a job
+  - job_set_policy - modify policies for a job and its descendants
+- `Tasks` (Thread, Process, or Job)
+  - task_bind_exception_port - attach an exception port to a task
+  - task_create_exception_channel - create an exception channel on a task
+  - task_kill - cause a task to stop running
+  - task_resume_from_exception - resume a task from a previously caught exception
+  - task_suspend - cause a task to be suspended
+- `Exceptions`
+  - exception_get_thread - create a handle for the exception thread
+  - exception_get_process - create a handle for the exception process
+- `Channels`
+  - channel_call - synchronously send a message and receive a reply
+  - channel_create - create a new channel
+  - channel_read - receive a message from a channel
+  - channel_read_etc - receive a message from a channel with handle information
+  - channel_write - write a message to a channel
+- `Sockets`
+  - socket_accept - receive a socket via a socket
+  - socket_create - create a new socket
+  - socket_read - read data from a socket
+  - socket_share - share a socket via a socket
+  - socket_shutdown - prevent reading or writing
+  - socket_write - write data to a socket
+- `Fifos`
+  - fifo_create - create a new fifo
+  - fifo_read - read data from a fifo
+  - fifo_write - write data to a fifo
+- `Events and Event Pairs`
+  - event_create - create an event
+  - eventpair_create - create a connected pair of events
+- `Ports`
+  - port_create - create a port
+  - port_queue - send a packet to a port
+  - port_wait - wait for packets to arrive on a port
+  - port_cancel - cancel notifications from async_wait
+- `Futexes`
+  - futex_wait - wait on a futex
+  - futex_wake - wake waiters on a futex
+  - futex_requeue - wake some waiters and requeue other waiters
+- `Virtual Memory Objects (VMOs)`
+  - vmo_create - create a new vmo
+  - vmo_read - read from a vmo
+  - vmo_write - write to a vmo
+  - vmo_create_child - creates a child of a vmo
+  - vmo_get_size - obtain the size of a vmo
+  - vmo_set_size - adjust the size of a vmo
+  - vmo_op_range - perform an operation on a range of a vmo
+  - vmo_replace_as_executable - add execute rights to a vmo
+  - vmo_create_physical - create a VM object referring to a specific contiguous range of physical memory
+  - vmo_set_cache_policy - set the caching policy for pages held by a VMO.
+- `Virtual Memory Address Regions (VMARs)`
+  - vmar_allocate - create a new child VMAR
+  - vmar_map - map a VMO into a process
+  - vmar_unmap - unmap a memory region from a process
+  - vmar_protect - adjust memory access permissions
+  - vmar_destroy - destroy a VMAR and all of its children
+- `Userspace Pagers`
+  - pager_create - create a new pager object
+  - pager_create_vmo - create a pager owned vmo
+  - pager_detach_vmo - detaches a pager from a vmo
+  - pager_supply_pages - supply pages into a pager owned vmo
+- `Cryptographically Secure RNG`
+  - cprng_add_entropy
+  - cprng_draw
+- `Time`
+  - nanosleep - sleep for some number of nanoseconds
+  - clock_get - read a system clock
+  - clock_get_monotonic - read the monotonic system clock
+  - ticks_get - read high-precision timer ticks
+  - ticks_per_second - read the number of high-precision timer ticks in a second
+  - deadline_after - Convert a time relative to now to an absolute deadline
+- `Timers`
+  - timer_create - create a timer object
+  - timer_set - start a timer
+  - timer_cancel - cancel a timer
+- `Hypervisor guests`
+  - guest_create - create a hypervisor guest
+  - guest_set_trap - set a trap in a hypervisor guest
+- `Virtual CPUs`
+  - vcpu_create - create a virtual cpu
+  - vcpu_resume - resume execution of a virtual cpu
+  - vcpu_interrupt - raise an interrupt on a virtual cpu
+  - vcpu_read_state - read state from a virtual cpu
+  - vcpu_write_state - write state to a virtual cpu
+- `Global system information`
+  - system_get_features - get hardware-specific features
+  - system_get_num_cpus - get number of CPUs
+  - system_get_physmem - get physical memory size
+  - system_get_version - get version string
+- `Debug Logging`
+  - debuglog_create - create a kernel managed debuglog reader or writer
+  - debuglog_write - write log entry to debuglog
+  - debuglog_read - read log entries from debuglog
+- `Multi-function`
+  - vmar_unmap_handle_close_thread_exit - three-in-one
+  - futex_wake_handle_close_thread_exit - three-in-one
+- `System`
+  - system_mexec - Soft reboot the system with a new kernel and bootimage
+  - system_mexec_payload_get - Return a ZBI containing ZBI entries necessary to boot this system
+- `DDK`
+  - bti_create - create a new bus transaction initiator
+  - bti_pin - pin pages and grant devices access to them
+  - bti_release_quarantine - releases all quarantined PMTs
+  - cache_flush - Flush CPU data and/or instruction caches
+  - interrupt_ack - Acknowledge an interrupt object
+  - interrupt_bind - Bind an interrupt object to a port
+  - interrupt_create - Create a physical or virtual interrupt object
+  - interrupt_destroy - Destroy an interrupt object
+  - interrupt_trigger - Trigger a virtual interrupt object
+  - interrupt_wait - Wait on an interrupt object
+  - iommu_create - create a new IOMMU object in the kernel
+  - pmt_unpin - unpin pages and revoke device access to them
+  - resource_create - create a resource object
+  - smc_call - Make an SMC call from user space
+
+## Zircon vDSO
